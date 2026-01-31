@@ -1,0 +1,8 @@
+## Interface: 20505
+## Title: PostmanNinja
+## Notes: Envoie automatiquement plusieurs messages dans différents canaux à chaque connexion
+## Author: m1d0b4n
+## Version: 2.0.0
+## SavedVariables: PostmanNinjaDB
+
+PostmanNinja.lua
