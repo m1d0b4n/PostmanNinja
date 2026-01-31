@@ -14,6 +14,7 @@ local defaults = {
             enabled = false,
             messages = {"POST TEXT!"},
             channel = "GUILD",
+            whisperTarget = "",
         }
     },
     popupX = nil,
@@ -40,6 +41,7 @@ local function InitDB()
                 enabled = PostmanNinjaDB.enabled or false,
                 messages = PostmanNinjaDB.messages or {"POST TEXT!"},
                 channel = PostmanNinjaDB.channel or "GUILD",
+                whisperTarget = "",
             }
         }
         PostmanNinjaDB.enabled = nil
@@ -63,6 +65,9 @@ local function InitDB()
     for _, job in ipairs(PostmanNinjaDB.jobs) do
         if not job.messages or #job.messages == 0 then
             job.messages = {"POST TEXT!"}
+        end
+        if not job.whisperTarget then
+            job.whisperTarget = ""
         end
     end
 end
@@ -105,6 +110,26 @@ local function SendJobMessage(job, forceTest)
             SendChatMessage(msg, "PARTY")
         elseif channel == "RAID" then
             SendChatMessage(msg, "RAID")
+        elseif channel == "WHISPER" then
+            if not job.whisperTarget or job.whisperTarget == "" then
+                error("Aucune cible de chuchotement définie")
+            end
+            -- Vérifier si le joueur est en ligne
+            local isOnline = false
+            local numFriends = C_FriendList.GetNumFriends()
+            for i = 1, numFriends do
+                local friendInfo = C_FriendList.GetFriendInfoByIndex(i)
+                if friendInfo and friendInfo.name == job.whisperTarget and friendInfo.connected then
+                    isOnline = true
+                    break
+                end
+            end
+            
+            if isOnline then
+                SendChatMessage(msg, "WHISPER", nil, job.whisperTarget)
+            else
+                error(job.whisperTarget .. " n'est pas en ligne")
+            end
         end
     end)
     
@@ -220,6 +245,7 @@ local function CreateUI()
             enabled = false,
             messages = {"Nouveau message"},
             channel = "GUILD",
+            whisperTarget = "",
         })
         currentJobIndex = #PostmanNinjaDB.jobs
         mainFrame.RefreshUI()
@@ -302,18 +328,17 @@ local function CreateUI()
     
     -- Fonction pour rafraîchir tout le contenu
     function mainFrame.RefreshUI()
-        -- Rafraîchir les onglets
+        -- Nettoyer les anciens onglets
         for _, tab in ipairs(mainFrame.tabs) do
             tab:Hide()
+            tab:SetParent(nil)
         end
         mainFrame.tabs = {}
         
         local totalWidth = 0
         for i, job in ipairs(PostmanNinjaDB.jobs) do
-            if not mainFrame.tabs[i] then
-                mainFrame.tabs[i] = CreateTab(i)
-            end
-            local tab = mainFrame.tabs[i]
+            local tab = CreateTab(i)
+            mainFrame.tabs[i] = tab
             tab:SetPoint("LEFT", (i-1) * 78, 0)
             tab.label:SetText(job.name)
             
@@ -352,7 +377,7 @@ local function CreateUI()
         nameBox:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
         nameBox:SetAutoFocus(false)
         nameBox:SetFontObject(GameFontHighlight)
-        nameBox:SetMaxLetters(30)
+        nameBox:SetMaxLetters(13)
         nameBox:SetText(job.name)
         nameBox:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -362,10 +387,27 @@ local function CreateUI()
         })
         nameBox:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
         nameBox:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-        nameBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        nameBox:SetScript("OnEscapePressed", function(self) 
+            self:SetText(job.name)
+            self:ClearFocus() 
+        end)
         nameBox:SetScript("OnEnterPressed", function(self) 
-            job.name = self:GetText()
+            local newName = strtrim(self:GetText())
+            if newName == "" then
+                self:SetText(job.name)
+            else
+                job.name = newName
+            end
             self:ClearFocus()
+            mainFrame.RefreshUI()
+        end)
+        nameBox:SetScript("OnEditFocusLost", function(self)
+            local newName = strtrim(self:GetText())
+            if newName == "" then
+                self:SetText(job.name)
+            else
+                job.name = newName
+            end
             mainFrame.RefreshUI()
         end)
         table.insert(mainFrame.contentElements, nameBox)
@@ -523,6 +565,7 @@ local function CreateUI()
             {text = "Crier", value = "YELL"},
             {text = "Groupe", value = "PARTY"},
             {text = "Raid", value = "RAID"},
+            {text = "Chuchoter", value = "WHISPER"},
         }
         
         UIDropDownMenu_Initialize(chanDropdown, function()
@@ -533,6 +576,7 @@ local function CreateUI()
                 info.func = function()
                     job.channel = channel.value
                     UIDropDownMenu_SetSelectedValue(chanDropdown, channel.value)
+                    mainFrame.RefreshUI()
                 end
                 UIDropDownMenu_AddButton(info)
             end
@@ -541,6 +585,30 @@ local function CreateUI()
         UIDropDownMenu_SetWidth(chanDropdown, 120)
         UIDropDownMenu_SetSelectedValue(chanDropdown, job.channel)
         table.insert(mainFrame.contentElements, chanDropdown)
+        
+        -- Champ cible de chuchotement (si WHISPER)
+        if job.channel == "WHISPER" then
+            local targetLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            targetLabel:SetPoint("LEFT", chanDropdown, "RIGHT", 30, 3)
+            targetLabel:SetText("Cible:")
+            table.insert(mainFrame.contentElements, targetLabel)
+            
+            local targetEditBox = CreateFrame("EditBox", nil, contentFrame, "InputBoxTemplate")
+            targetEditBox:SetSize(120, 20)
+            targetEditBox:SetPoint("LEFT", targetLabel, "RIGHT", 10, 0)
+            targetEditBox:SetAutoFocus(false)
+            targetEditBox:SetText(job.whisperTarget or "")
+            targetEditBox:SetScript("OnTextChanged", function(self)
+                job.whisperTarget = self:GetText()
+            end)
+            targetEditBox:SetScript("OnEnterPressed", function(self)
+                self:ClearFocus()
+            end)
+            targetEditBox:SetScript("OnEscapePressed", function(self)
+                self:ClearFocus()
+            end)
+            table.insert(mainFrame.contentElements, targetEditBox)
+        end
     end
     
     -- Initialiser l'UI
