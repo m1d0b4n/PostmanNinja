@@ -114,22 +114,9 @@ local function SendJobMessage(job, forceTest)
             if not job.whisperTarget or job.whisperTarget == "" then
                 error("Aucune cible de chuchotement définie")
             end
-            -- Vérifier si le joueur est en ligne
-            local isOnline = false
-            local numFriends = C_FriendList.GetNumFriends()
-            for i = 1, numFriends do
-                local friendInfo = C_FriendList.GetFriendInfoByIndex(i)
-                if friendInfo and friendInfo.name == job.whisperTarget and friendInfo.connected then
-                    isOnline = true
-                    break
-                end
-            end
-            
-            if isOnline then
-                SendChatMessage(msg, "WHISPER", nil, job.whisperTarget)
-            else
-                error(job.whisperTarget .. " n'est pas en ligne")
-            end
+            -- Envoyer directement le whisper
+            -- WoW accepte les noms de personnage ET les noms Battle.net
+            SendChatMessage(msg, "WHISPER", nil, job.whisperTarget)
         end
     end)
     
